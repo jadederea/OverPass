@@ -24,6 +24,13 @@
 - Keep things simple but correct
 - Provide clear guidance when Xcode interaction is required
 
+### Code Cleanup Process
+- **During Porting**: When code is found unnecessary after KeyRelay comparison, comment it out with clear markers
+- **Marking Pattern**: Use `// MARK: - REMOVE AFTER PORTING` and `// TODO: Remove this - not needed based on KeyRelay analysis`
+- **Reason**: Keep codebase clean and functional - comment out instead of delete during porting
+- **Final Cleanup**: After porting complete, review and remove all marked code
+- **Documentation**: Track in CODE_CLEANUP_GUIDE.md
+
 ---
 
 ## Project Intent
