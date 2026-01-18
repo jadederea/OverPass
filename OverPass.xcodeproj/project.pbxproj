@@ -11,6 +11,9 @@
 		2bec1cda2b0040d8a7f255c81b23f556 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1d7161550da549b4928055c95e90f808 /* Logger.swift */; };
 		F1BCDC432F1CC6CD003671C0 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4d9f0a3b5c6d7e8f9a0b1c2d3e4f5a6b /* PermissionManager.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* AppState.swift */; };
+		K1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 /* KeyboardDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = K2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* KeyboardDevice.swift */; };
+		K3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* KeyboardDeviceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = K4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* KeyboardDeviceService.swift */; };
+		K5E6F7A8B9C0D1E2F3A4B5C6D7E8 /* AutomaticKeyboardDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = K6F7A8B9C0D1E2F3A4B5C6D7E8F9 /* AutomaticKeyboardDetector.swift */; };
 		C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* PermissionsScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9 /* PermissionsScreenView.swift */; };
 		E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0 /* KeyboardDetectionScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1 /* KeyboardDetectionScreenView.swift */; };
 		A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2 /* ConfirmationScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3 /* ConfirmationScreenView.swift */; };
@@ -27,6 +30,9 @@
 		1d7161550da549b4928055c95e90f808 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		4d9f0a3b5c6d7e8f9a0b1c2d3e4f5a6b /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		K2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* KeyboardDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDevice.swift; sourceTree = "<group>"; };
+		K4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* KeyboardDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDeviceService.swift; sourceTree = "<group>"; };
+		K6F7A8B9C0D1E2F3A4B5C6D7E8F9 /* AutomaticKeyboardDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticKeyboardDetector.swift; sourceTree = "<group>"; };
 		D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9 /* PermissionsScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsScreenView.swift; sourceTree = "<group>"; };
 		F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1 /* KeyboardDetectionScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDetectionScreenView.swift; sourceTree = "<group>"; };
 		B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3 /* ConfirmationScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationScreenView.swift; sourceTree = "<group>"; };
@@ -58,6 +64,9 @@
 				1d7161550da549b4928055c95e90f808 /* Logger.swift */,
 				4d9f0a3b5c6d7e8f9a0b1c2d3e4f5a6b /* PermissionManager.swift */,
 				B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* AppState.swift */,
+				K2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* KeyboardDevice.swift */,
+				K4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* KeyboardDeviceService.swift */,
+				K6F7A8B9C0D1E2F3A4B5C6D7E8F9 /* AutomaticKeyboardDetector.swift */,
 				D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9 /* PermissionsScreenView.swift */,
 				F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1 /* KeyboardDetectionScreenView.swift */,
 				B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3 /* ConfirmationScreenView.swift */,
@@ -169,6 +178,9 @@
 				15a41eefd3944f109e8a2e82e07d858e /* AppVersion.swift in Sources */,
 				2bec1cda2b0040d8a7f255c81b23f556 /* Logger.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 /* AppState.swift in Sources */,
+				K1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 /* KeyboardDevice.swift in Sources */,
+				K3D4E5F6A7B8C9D0E1F2A3B4C5D6E7 /* KeyboardDeviceService.swift in Sources */,
+				K5E6F7A8B9C0D1E2F3A4B5C6D7E8 /* AutomaticKeyboardDetector.swift in Sources */,
 				C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* PermissionsScreenView.swift in Sources */,
 				E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0 /* KeyboardDetectionScreenView.swift in Sources */,
 				A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2 /* ConfirmationScreenView.swift in Sources */,

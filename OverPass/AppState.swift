@@ -28,6 +28,9 @@ class AppState: ObservableObject {
         let interfaces: [String]
     }
     
+    // New: Store detected keyboard devices (replaces simple KeyboardInfo)
+    @Published var detectedKeyboardDevices: [KeyboardDevice] = []
+    
     private init() {}
     
     func navigateTo(_ screen: AppScreen) {

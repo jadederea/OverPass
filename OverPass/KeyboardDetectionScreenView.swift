@@ -12,8 +12,9 @@ struct KeyboardDetectionScreenView: View {
     var onBack: (() -> Void)?
     @StateObject private var logger = Logger.shared
     @StateObject private var permissionManager = PermissionManager.shared
-    @State private var keystrokes: [String] = []
-    @State private var detecting = false
+    @StateObject private var deviceService = KeyboardDeviceService()
+    @StateObject private var detector = AutomaticKeyboardDetector()
+    @State private var hasStartedDetection = false
     
     var body: some View {
         ZStack {
@@ -101,41 +102,78 @@ struct KeyboardDetectionScreenView: View {
                     
                     // Keystroke detection area
                     VStack(spacing: 16) {
-                        if keystrokes.isEmpty {
-                            Text("Waiting for input...")
+                        if !hasStartedDetection {
+                            Text("Click 'Start Detection' and type on your keyboard")
                                 .font(.system(size: 18))
                                 .foregroundColor(Color(white: 0.5))
-                        } else if detecting {
+                        } else if detector.keyPressCount == 0 {
+                            Text("Waiting for input... Type on your keyboard")
+                                .font(.system(size: 18))
+                                .foregroundColor(Color(white: 0.5))
+                        } else if detector.detectedDevices.isEmpty {
                             VStack(spacing: 16) {
                                 ProgressView()
                                     .progressViewStyle(.circular)
                                     .scaleEffect(1.5)
                                     .tint(.purple)
-                                Text("Detecting keyboard...")
+                                Text("Detecting keyboard... (\(detector.keyPressCount) keystrokes)")
                                     .font(.system(size: 16))
                                     .foregroundColor(Color(white: 0.6))
+                                Text("Keep typing to ensure detection")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(white: 0.5))
                             }
                         } else {
                             VStack(spacing: 16) {
-                                Text("Keys detected:")
+                                Text("Keyboard detected!")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.green)
+                                
+                                Text("Found \(detector.detectedDevices.count) device(s)")
                                     .font(.system(size: 16))
                                     .foregroundColor(Color(white: 0.6))
                                 
-                                HStack(spacing: 12) {
-                                    ForEach(keystrokes, id: \.self) { key in
-                                        Text(key)
-                                            .font(.system(size: 16, design: .monospaced))
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 8)
-                                            .background(Color(white: 0.2))
+                                // Show detected devices
+                                ForEach(detector.detectedDevices) { device in
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(device.name)
+                                            .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(.white)
-                                            .cornerRadius(6)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 6)
-                                                    .stroke(Color(white: 0.3), lineWidth: 1)
-                                            )
+                                        Text("\(device.manufacturer) - \(device.transportType.rawValue)")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color(white: 0.6))
                                     }
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color(white: 0.2))
+                                    .cornerRadius(6)
                                 }
+                                
+                                Button(action: {
+                                    // Stop detection and proceed to confirmation
+                                    detector.stopDetection()
+                                    appState.detectedKeyboardDevices = detector.detectedDevices
+                                    
+                                    // Convert to old format for compatibility (will update later)
+                                    if let firstDevice = detector.detectedDevices.first {
+                                        appState.setKeyboardInfo(AppState.KeyboardInfo(
+                                            name: firstDevice.name,
+                                            vendorId: String(format: "0x%04x", firstDevice.vendorId),
+                                            productId: String(format: "0x%04x", firstDevice.productId),
+                                            interfaces: detector.detectedDevices.map { $0.transportType.rawValue }
+                                        ))
+                                    }
+                                    
+                                    appState.navigateTo(.confirmation)
+                                }) {
+                                    Text("Continue with Detected Keyboard")
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                }
+                                .buttonStyle(.plain)
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
                             }
                         }
                     }
@@ -148,14 +186,6 @@ struct KeyboardDetectionScreenView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color(white: 0.3), lineWidth: 1)
                     )
-                    .onAppear {
-                        // Keyboard detection will be implemented when we port functionality from KeyRelay
-                        // For now, simulate detection after a short delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            // This will be replaced with real keyboard detection
-                            logger.log("Keyboard detection screen appeared - detection will be implemented", level: .info)
-                        }
-                    }
                     
                     // Copy Debug Logs button
                     HStack(spacing: 8) {
@@ -186,33 +216,56 @@ struct KeyboardDetectionScreenView: View {
                         }
                     }
                     
-                    // Temporary button to proceed (will be replaced with real detection)
-                    Button(action: {
-                        detecting = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            // Mock keyboard detection - will be replaced with real implementation
-                            appState.setKeyboardInfo(AppState.KeyboardInfo(
-                                name: "Detected Keyboard",
-                                vendorId: "0x05ac",
-                                productId: "0x026c",
-                                interfaces: ["USB", "Bluetooth"]
-                            ))
-                            appState.navigateTo(.confirmation)
+                    // Start Detection button
+                    if !hasStartedDetection {
+                        Button(action: {
+                            logger.log("User clicked Start Detection", level: .info)
+                            hasStartedDetection = true
+                            // Start device scanning if not already done
+                            if deviceService.availableDevices.isEmpty {
+                                deviceService.scanForDevices()
+                            }
+                            // Wait a moment for devices to be scanned, then start detection
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                detector.startDetection(with: deviceService.availableDevices)
+                                logger.log("Started detection with \(deviceService.availableDevices.count) available devices", level: .info)
+                            }
+                        }) {
+                            Text("Start Detection")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
                         }
-                    }) {
-                        Text("Simulate Detection (Temporary)")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                        .buttonStyle(.plain)
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        .disabled(deviceService.isScanning)
+                    } else if detector.isListening {
+                        Button(action: {
+                            logger.log("User clicked Stop Detection", level: .info)
+                            detector.stopDetection()
+                            hasStartedDetection = false
+                        }) {
+                            Text("Stop Detection")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.plain)
+                        .background(Color(white: 0.3))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
                     }
-                    .buttonStyle(.plain)
-                    .background(Color.purple.opacity(0.3))
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                    .opacity(keystrokes.isEmpty ? 1.0 : 0.0)
                     
-                    Text("The app will identify your keyboard hardware and interfaces automatically")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color(white: 0.5))
+                    if hasStartedDetection {
+                        Text("Type on the keyboard you want to use. The app will detect it and all its interfaces (USB, Bluetooth, etc.)")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(white: 0.5))
+                            .multilineTextAlignment(.center)
+                    } else {
+                        Text("The app will identify your keyboard hardware and interfaces automatically")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(white: 0.5))
+                    }
                 }
                 .padding(48)
                 .frame(maxWidth: 600)
