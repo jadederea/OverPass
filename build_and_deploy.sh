@@ -267,23 +267,64 @@ mkdir -p "$APP_PATH/Contents/Resources"
 cp "$VERSION_FILE" "$APP_PATH/Contents/Resources/version.txt"
 echo -e "${GREEN}✓ Version file copied to app bundle${NC}"
 
+# Get signing identity for final signing
+SIGNING_IDENTITY=$(codesign -dvv "$APP_PATH" 2>&1 | grep "Authority" | head -1 | sed 's/.*Authority=\([^)]*\).*/\1/' || echo "")
+if [ -z "$SIGNING_IDENTITY" ] || [ "$SIGNING_IDENTITY" = "" ]; then
+    # Try to find any available signing identity
+    SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "Apple Development")
+fi
+
 # Re-sign the app after adding version.txt (signature gets invalidated by adding files)
 echo -e "${BLUE}Re-signing app after adding version file...${NC}"
-SIGNING_IDENTITY=$(codesign -dvv "$APP_PATH" 2>&1 | grep "Authority" | head -1 | sed 's/.*Authority=\([^)]*\).*/\1/' || echo "Apple Development")
-if [ -z "$SIGNING_IDENTITY" ] || [ "$SIGNING_IDENTITY" = "" ]; then
-    SIGNING_IDENTITY="Apple Development"
-fi
 codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_PATH" 2>&1 | grep -v "replacing existing signature" || true
 echo -e "${GREEN}✓ App re-signed${NC}"
+
+# Verify signature is valid before copying
+if codesign --verify --verbose "$APP_PATH" 2>&1 | grep -q "valid on disk"; then
+    echo -e "${GREEN}✓ App signature verified before deployment${NC}"
+else
+    echo -e "${YELLOW}⚠ Warning: App signature verification failed before deployment${NC}"
+fi
 
 # Remove old versioned apps from Desktop (optional - keep last 3)
 echo -e "${BLUE}Cleaning old versions from Desktop (keeping last 3)...${NC}"
 ls -t "$DESKTOP_DIR"/OverPass-v*.app 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true
 
 # Copy to Desktop with versioned name
+# Use rsync to avoid resource forks and preserve structure
 echo -e "${BLUE}Deploying to Desktop as ${VERSIONED_APP_NAME}...${NC}"
 rm -rf "$DESKTOP_DIR/$VERSIONED_APP_NAME"
-cp -R "$APP_PATH" "$DESKTOP_DIR/$VERSIONED_APP_NAME"
+
+# Use rsync with --delete to ensure clean copy without resource forks
+rsync -a --delete "$APP_PATH/" "$DESKTOP_DIR/$VERSIONED_APP_NAME/"
+
+# Remove all extended attributes that might interfere with code signing
+xattr -cr "$DESKTOP_DIR/$VERSIONED_APP_NAME" 2>/dev/null || true
+
+# Remove any .DS_Store files
+find "$DESKTOP_DIR/$VERSIONED_APP_NAME" -name ".DS_Store" -delete 2>/dev/null || true
+
+DEPLOYED_APP="$DESKTOP_DIR/$VERSIONED_APP_NAME"
+
+# Re-sign the deployed app (copying can invalidate signature)
+echo -e "${BLUE}Re-signing deployed app...${NC}"
+codesign --force --deep --sign "$SIGNING_IDENTITY" "$DEPLOYED_APP" 2>&1 | grep -v "replacing existing signature" || true
+
+# Final verification
+if codesign --verify --verbose "$DEPLOYED_APP" 2>&1 | grep -q "valid on disk"; then
+    echo -e "${GREEN}✓ Signature verified on deployed app${NC}"
+else
+    echo -e "${YELLOW}⚠ Warning: Signature verification failed${NC}"
+    echo -e "${YELLOW}   Trying alternative signing method...${NC}"
+    # Try signing without --deep flag
+    codesign --force --sign "$SIGNING_IDENTITY" "$DEPLOYED_APP" 2>&1 | grep -v "replacing existing signature" || true
+    if codesign --verify --verbose "$DEPLOYED_APP" 2>&1 | grep -q "valid on disk"; then
+        echo -e "${GREEN}✓ Signature verified with alternative method${NC}"
+    else
+        echo -e "${YELLOW}⚠ App deployed but signature verification failed${NC}"
+        echo -e "${YELLOW}   You may need to allow the app in System Settings > Privacy & Security${NC}"
+    fi
+fi
 
 echo -e "${GREEN}✓ Deployed to: $DESKTOP_DIR/$VERSIONED_APP_NAME${NC}"
 echo -e "${GREEN}=== Build and Deploy Complete ===${NC}"

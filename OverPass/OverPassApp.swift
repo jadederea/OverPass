@@ -18,6 +18,7 @@ struct OverPassApp: App {
                 .frame(minWidth: 800, minHeight: 600)
         }
         .windowStyle(.automatic)
+        .defaultSize(width: 1200, height: 800)
         .commands {
             // Remove default menu items we don't need
         }
@@ -46,7 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             permissionManager.requestInputMonitoringPermission()
         }
         
-        // Maximize window on launch - use visibleFrame to account for menu bar and dock
+        // Configure window behavior
         DispatchQueue.main.async {
             if let window = NSApplication.shared.windows.first,
                let screen = NSScreen.main {
@@ -54,7 +55,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 window.setFrame(visibleFrame, display: true)
                 window.setFrameAutosaveName("OverPassMainWindow")
                 window.makeKeyAndOrderFront(nil)
+                
+                // Ensure app terminates when window is closed
+                window.isReleasedWhenClosed = false
             }
+            
+            // Set app to terminate when last window closes
+            NSApplication.shared.setActivationPolicy(.regular)
         }
     }
     
@@ -75,5 +82,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         permissionManager.checkPermissions()
         
         return true
+    }
+    
+    // Ensure app terminates when last window is closed
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        logger.log("Last window closed - terminating application", level: .info)
+        return true
+    }
+    
+    // Handle window closing - ensure clean shutdown
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        logger.log("Application should terminate - cleaning up", level: .info)
+        
+        // Stop any active detection or capture services
+        // (Will be implemented when we port capture service)
+        
+        return .terminateNow
     }
 }
