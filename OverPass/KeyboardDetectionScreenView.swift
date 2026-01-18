@@ -119,14 +119,15 @@ struct KeyboardDetectionScreenView: View {
                                 Text("Detecting keyboard... (\(detector.keyPressCount) keystrokes)")
                                     .font(.system(size: 16))
                                     .foregroundColor(Color(white: 0.6))
-                                Text("Keep typing to ensure detection")
+                                Text("Keep typing (detection will stop automatically)")
                                     .font(.system(size: 14))
                                     .foregroundColor(Color(white: 0.5))
                             }
                         } else {
-                            VStack(spacing: 16) {
-                                Text("Keyboard detected!")
-                                    .font(.system(size: 18, weight: .semibold))
+                            // Detection complete - show results and confirmation
+                            VStack(spacing: 20) {
+                                Text("Keyboard Detected!")
+                                    .font(.system(size: 20, weight: .semibold))
                                     .foregroundColor(.green)
                                 
                                 Text("Found \(detector.detectedDevices.count) device(s)")
@@ -134,46 +135,89 @@ struct KeyboardDetectionScreenView: View {
                                     .foregroundColor(Color(white: 0.6))
                                 
                                 // Show detected devices
-                                ForEach(detector.detectedDevices) { device in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(device.name)
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(.white)
-                                        Text("\(device.manufacturer) - \(device.transportType.rawValue)")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(Color(white: 0.6))
+                                VStack(spacing: 12) {
+                                    ForEach(detector.detectedDevices) { device in
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            HStack {
+                                                Image(systemName: device.transportType == .usb ? "cable.connector" : device.transportType == .bluetooth ? "waveform" : "keyboard")
+                                                    .font(.system(size: 16))
+                                                Text(device.name)
+                                                    .font(.system(size: 16, weight: .medium))
+                                                    .foregroundColor(.white)
+                                            }
+                                            Text("\(device.manufacturer) - \(device.transportType.rawValue)")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(Color(white: 0.6))
+                                            Text("Vendor: 0x\(String(device.vendorId, radix: 16, uppercase: true)), Product: 0x\(String(device.productId, radix: 16, uppercase: true))")
+                                                .font(.system(size: 12, design: .monospaced))
+                                                .foregroundColor(Color(white: 0.5))
+                                        }
+                                        .padding(16)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color(white: 0.2))
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(Color(white: 0.3), lineWidth: 1)
+                                        )
                                     }
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color(white: 0.2))
-                                    .cornerRadius(6)
                                 }
                                 
-                                Button(action: {
-                                    // Stop detection and proceed to confirmation
-                                    detector.stopDetection()
-                                    appState.detectedKeyboardDevices = detector.detectedDevices
-                                    
-                                    // Convert to old format for compatibility (will update later)
-                                    if let firstDevice = detector.detectedDevices.first {
-                                        appState.setKeyboardInfo(AppState.KeyboardInfo(
-                                            name: firstDevice.name,
-                                            vendorId: String(format: "0x%04x", firstDevice.vendorId),
-                                            productId: String(format: "0x%04x", firstDevice.productId),
-                                            interfaces: detector.detectedDevices.map { $0.transportType.rawValue }
-                                        ))
+                                // Confirmation buttons
+                                HStack(spacing: 12) {
+                                    Button(action: {
+                                        // Cancel - restart detection
+                                        logger.log("User cancelled detection, restarting", level: .info)
+                                        detector.detectedDevices.removeAll()
+                                        detector.keyPressCount = 0
+                                        detector.detectedDeviceIds.removeAll()
+                                        hasStartedDetection = false
+                                        detector.stopDetection()
+                                        // Restart detection
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                            hasStartedDetection = true
+                                            detector.startDetection(with: deviceService.availableDevices)
+                                        }
+                                    }) {
+                                        Text("Detect Again")
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
                                     }
+                                    .buttonStyle(.plain)
+                                    .background(Color(white: 0.2))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color(white: 0.3), lineWidth: 1)
+                                    )
                                     
-                                    appState.navigateTo(.confirmation)
-                                }) {
-                                    Text("Continue with Detected Keyboard")
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
+                                    Button(action: {
+                                        // Confirm - proceed to confirmation screen
+                                        logger.log("User confirmed detected keyboard(s)", level: .info)
+                                        appState.detectedKeyboardDevices = detector.detectedDevices
+                                        
+                                        // Convert to old format for compatibility (will update later)
+                                        if let firstDevice = detector.detectedDevices.first {
+                                            appState.setKeyboardInfo(AppState.KeyboardInfo(
+                                                name: firstDevice.name,
+                                                vendorId: String(format: "0x%04x", firstDevice.vendorId),
+                                                productId: String(format: "0x%04x", firstDevice.productId),
+                                                interfaces: detector.detectedDevices.map { $0.transportType.rawValue }
+                                            ))
+                                        }
+                                        
+                                        appState.navigateTo(.confirmation)
+                                    }) {
+                                        Text("Confirm")
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .background(Color.green)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(8)
                                 }
-                                .buttonStyle(.plain)
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
                             }
                         }
                     }

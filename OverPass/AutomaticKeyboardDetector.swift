@@ -187,10 +187,18 @@ class AutomaticKeyboardDetector: ObservableObject {
         logger.log("  Vendor: 0x\(String(vendorId, radix: 16, uppercase: true)), Product: 0x\(String(productId, radix: 16, uppercase: true)), Location: 0x\(String(locationId, radix: 16, uppercase: true))", level: .debug)
         
         // Track this device
-        detectedDeviceIds.insert(deviceId)
+        let wasNewDevice = detectedDeviceIds.insert(deviceId).inserted
         keyPressCount += 1
         
         logger.log("Total keystrokes: \(keyPressCount), Unique devices: \(detectedDeviceIds.count)", level: .info)
+        
+        // Auto-stop after 3-5 keystrokes and correlate devices
+        // This gives enough data to identify the keyboard without being too slow
+        if keyPressCount >= 3 && wasNewDevice {
+            logger.log("Enough keystrokes detected (\(keyPressCount)), stopping detection and correlating devices", level: .info)
+            // Stop detection and correlate
+            stopDetection()
+        }
     }
 }
 
