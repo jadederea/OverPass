@@ -2,21 +2,40 @@
 
 ## If You See "App May Be Damaged" Error
 
-This is normal for development builds. macOS Gatekeeper blocks unsigned or development-signed apps by default.
+This is normal for development builds. macOS Gatekeeper blocks development-signed apps. Here are several ways to fix it:
 
-### Solution:
+### Method 1: Remove Quarantine Attribute (Easiest)
+
+Open Terminal and run:
+```bash
+xattr -cr ~/Desktop/OverPass-v1.0.37.app
+```
+
+Then try opening the app normally (double-click).
+
+### Method 2: Right-Click Open
 
 1. **Right-click** on the app in Finder
 2. Select **"Open"** (not double-click)
-3. macOS will show a dialog saying the app is from an unidentified developer
-4. Click **"Open"** in the dialog
-5. The app will launch and be added to your allowed apps
+3. If macOS shows a warning dialog, click **"Open"** in the dialog
 
-**OR**
+### Method 3: System Settings (if available)
 
 1. Go to **System Settings > Privacy & Security**
-2. Scroll down to see if there's a message about the app being blocked
-3. Click **"Open Anyway"** next to the OverPass app
+2. Scroll down to **Security** section
+3. Look for a message about the app being blocked
+4. Click **"Open Anyway"** if it appears
+
+### Method 4: Terminal Command (Always Works)
+
+If the above don't work, open Terminal and run:
+```bash
+sudo xattr -rd com.apple.quarantine ~/Desktop/OverPass-v1.0.37.app
+```
+
+Then open the app normally.
+
+**Note:** Replace `OverPass-v1.0.37.app` with the actual version number of the app you're trying to open.
 
 After the first launch, the app will open normally with a double-click.
 

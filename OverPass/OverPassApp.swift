@@ -18,7 +18,6 @@ struct OverPassApp: App {
                 .frame(minWidth: 800, minHeight: 600)
         }
         .windowStyle(.automatic)
-        .defaultSize(width: 1200, height: 800)
         .commands {
             // Remove default menu items we don't need
         }

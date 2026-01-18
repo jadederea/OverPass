@@ -295,20 +295,38 @@ ls -t "$DESKTOP_DIR"/OverPass-v*.app 2>/dev/null | tail -n +4 | xargs rm -rf 2>/
 echo -e "${BLUE}Deploying to Desktop as ${VERSIONED_APP_NAME}...${NC}"
 rm -rf "$DESKTOP_DIR/$VERSIONED_APP_NAME"
 
-# Use rsync with --delete to ensure clean copy without resource forks
-rsync -a --delete "$APP_PATH/" "$DESKTOP_DIR/$VERSIONED_APP_NAME/"
+# Copy app bundle - use cp -R with proper flags to preserve structure
+# rsync was causing issues with executable, so use cp instead
+cp -R "$APP_PATH" "$DESKTOP_DIR/$VERSIONED_APP_NAME"
 
-# Remove all extended attributes that might interfere with code signing
-xattr -cr "$DESKTOP_DIR/$VERSIONED_APP_NAME" 2>/dev/null || true
+# Verify executable was copied
+if [ ! -f "$DESKTOP_DIR/$VERSIONED_APP_NAME/Contents/MacOS/OverPass" ]; then
+    echo -e "${RED}ERROR: Executable not found in copied app!${NC}"
+    echo -e "${YELLOW}Source app path: $APP_PATH${NC}"
+    echo -e "${YELLOW}Checking source app...${NC}"
+    ls -la "$APP_PATH/Contents/MacOS/" || echo "Source MacOS directory not found"
+    exit 1
+fi
 
-# Remove any .DS_Store files
+# Remove any .DS_Store files first
 find "$DESKTOP_DIR/$VERSIONED_APP_NAME" -name ".DS_Store" -delete 2>/dev/null || true
 
 DEPLOYED_APP="$DESKTOP_DIR/$VERSIONED_APP_NAME"
 
-# Re-sign the deployed app (copying can invalidate signature)
+# Re-sign the deployed app BEFORE removing attributes (signature can be invalidated by xattr removal)
 echo -e "${BLUE}Re-signing deployed app...${NC}"
 codesign --force --deep --sign "$SIGNING_IDENTITY" "$DEPLOYED_APP" 2>&1 | grep -v "replacing existing signature" || true
+
+# NOW remove extended attributes AFTER signing (this prevents "damaged" error)
+# Remove all extended attributes that might interfere with Gatekeeper
+xattr -cr "$DEPLOYED_APP" 2>/dev/null || true
+
+# Remove quarantine attribute specifically (this is what causes "damaged" error)
+xattr -d com.apple.quarantine "$DEPLOYED_APP" 2>/dev/null || true
+
+# Remove provenance and other Finder attributes
+xattr -d com.apple.provenance "$DEPLOYED_APP" 2>/dev/null || true
+xattr -d com.apple.FinderInfo "$DEPLOYED_APP" 2>/dev/null || true
 
 # Final verification
 if codesign --verify --verbose "$DEPLOYED_APP" 2>&1 | grep -q "valid on disk"; then
