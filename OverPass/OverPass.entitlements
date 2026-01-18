@@ -8,6 +8,9 @@
 	<!-- Required for USB device access (keyboard filtering) -->
 	<key>com.apple.security.device.usb</key>
 	<true/>
+	<!-- Required for Bluetooth keyboard support -->
+	<key>com.apple.security.device.bluetooth</key>
+	<true/>
 	<!-- Required for Input Monitoring permission (capturing keystrokes) -->
 	<key>com.apple.security.device.input-monitoring</key>
 	<true/>

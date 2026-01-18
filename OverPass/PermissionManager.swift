@@ -52,9 +52,8 @@ class PermissionManager: ObservableObject {
             // If tap creation fails, permission is likely not granted
             return false
         }
-        // Disable the tap immediately - we just wanted to test if we could create it
-        CGEvent.tapEnable(tap: eventTap, enable: false)
-        // Note: eventTap is automatically memory managed in Swift, no need to release
+        // Properly invalidate and clean up the tap - we just wanted to test if we could create it
+        CFMachPortInvalidate(eventTap)
         return true
     }
     
