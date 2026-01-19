@@ -12,13 +12,42 @@ struct ControlPanelView: View {
     @ObservedObject var appState: AppState
     var onBack: (() -> Void)?
     @StateObject private var logger = Logger.shared
+    @StateObject private var captureService = KeyboardCaptureService.shared
     
-    @State private var isCapturing = false
-    @State private var capturedKeys = 0
-    @State private var keyHistory: [KeyEvent] = []
     @State private var minutes = 5
     @State private var seconds = 0
     @State private var timeRemaining: Int? = nil
+    
+    // Computed properties for capture service
+    private var isCapturing: Bool {
+        captureService.isCapturing
+    }
+    
+    private var capturedKeys: Int {
+        captureService.capturedEventCount
+    }
+    
+    private var keyHistory: [KeyEvent] {
+        captureService.capturedEvents.map { event in
+            KeyEvent(
+                id: event.id,
+                device: targetDevice?.name ?? "Unknown",
+                key: event.key,
+                event: event.event,
+                timestamp: formatTimestamp(event.timestamp)
+            )
+        }
+    }
+    
+    private var targetDevice: KeyboardDevice? {
+        appState.detectedKeyboardDevices.first
+    }
+    
+    private func formatTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter.string(from: date)
+    }
     
     struct KeyEvent: Identifiable {
         let id: String
@@ -30,14 +59,21 @@ struct ControlPanelView: View {
     
     var body: some View {
         ZStack {
-            Color(red: 0.09, green: 0.09, blue: 0.11)
+            Color.sapphireDark
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Back button
                 if let onBack = onBack {
                     HStack {
-                        Button(action: onBack) {
+                        Button(action: {
+                            // Stop capture/relay before navigating back
+                            if captureService.isCapturing {
+                                captureService.stopCapture()
+                                logger.log("Capture stopped due to navigation back", level: .info)
+                            }
+                            onBack()
+                        }) {
                             HStack {
                                 Image(systemName: "chevron.left")
                                 Text("Back")
@@ -52,12 +88,6 @@ struct ControlPanelView: View {
                         .padding(32)
                         Spacer()
                     }
-                    .overlay(
-                        Rectangle()
-                            .frame(height: 1)
-                            .foregroundColor(Color(white: 0.2))
-                            .offset(y: 0)
-                    )
                 }
                 
                 // Main content - two column layout
@@ -220,7 +250,7 @@ struct ControlPanelView: View {
                             }
                             
                             // Parallels Settings
-                            ParallelsSettingsCard()
+                            ParallelsSettingsCard(captureService: captureService)
                                 .frame(maxWidth: .infinity)
                             
                             // Action buttons - horizontal layout
@@ -288,6 +318,27 @@ struct ControlPanelView: View {
                                         .stroke(Color(white: 0.3), lineWidth: 1)
                                 )
                                 
+                                Button(action: {
+                                    captureService.copyKeystrokeHistoryToClipboard()
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "keyboard")
+                                            .font(.system(size: 12))
+                                        Text("Copy Keystrokes")
+                                            .font(.system(size: 12))
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                .background(Color(white: 0.2))
+                                .foregroundColor(.white)
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color(white: 0.3), lineWidth: 1)
+                                )
+                                
                                 if let message = logger.copyConfirmationMessage {
                                     Text(message)
                                         .font(.system(size: 10))
@@ -316,7 +367,7 @@ struct ControlPanelView: View {
                             }
                             Spacer()
                             Button(action: {
-                                keyHistory.removeAll()
+                                captureService.clearHistory()
                             }) {
                                 HStack {
                                     Image(systemName: "trash")
@@ -365,7 +416,7 @@ struct ControlPanelView: View {
                 }
             }
         }
-        .onChange(of: isCapturing) { newValue in
+        .onChange(of: captureService.isCapturing) { newValue in
             if newValue {
                 startTimer()
             }
@@ -380,27 +431,47 @@ struct ControlPanelView: View {
     
     private func toggleCapture(_ newValue: Bool) {
         if newValue {
+            guard let device = targetDevice else {
+                logger.log("Cannot start capture - no target device selected", level: .error)
+                return
+            }
+            
+            // If relay mode, check that a VM is selected
+            if captureService.isRelayMode {
+                guard let vm = captureService.targetVM else {
+                    logger.log("Cannot start relay - no VM selected", level: .error)
+                    return
+                }
+                guard vm.isRunning else {
+                    logger.log("Cannot start relay - VM is not running", level: .error)
+                    return
+                }
+            }
+            
             let totalSeconds = minutes * 60 + seconds
             timeRemaining = totalSeconds
-            isCapturing = true
+            captureService.startCapture(targetDevice: device)
             startTimer()
-            logger.log("Capture started - Timer: \(minutes)m \(seconds)s", level: .info)
+            let modeText = captureService.isRelayMode ? "Relay" : "Capture"
+            logger.log("\(modeText) started - Timer: \(minutes)m \(seconds)s", level: .info)
         } else {
-            isCapturing = false
+            captureService.stopCapture()
             timeRemaining = nil
             logger.log("Capture stopped - Total events: \(capturedKeys)", level: .info)
         }
     }
     
     private func startTimer() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            guard isCapturing, let time = timeRemaining else {
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak captureService] timer in
+            guard let captureService = captureService,
+                  captureService.isCapturing,
+                  let time = timeRemaining else {
                 timer.invalidate()
                 return
             }
             
             if time <= 1 {
-                isCapturing = false
+                captureService.stopCapture()
                 timeRemaining = nil
                 timer.invalidate()
                 logger.log("Safety timer expired - Capture stopped", level: .warning)
@@ -506,47 +577,99 @@ struct InfoRow: View {
 }
 
 struct ParallelsSettingsCard: View {
-    @State private var selectedVM = "Windows 11"
+    @ObservedObject var captureService: KeyboardCaptureService
+    @State private var isRefreshing = false
     
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "display")
-                    .font(.system(size: 16))
-                Text("Parallels VM")
+            // Mode Toggle
+            HStack(spacing: 12) {
+                Text("Mode:")
                     .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { captureService.isRelayMode ? "relay" : "capture" },
+                    set: { newValue in
+                        captureService.isRelayMode = (newValue == "relay")
+                        if captureService.isRelayMode {
+                            captureService.refreshParallelsVMs()
+                        }
+                    }
+                )) {
+                    Text("Capture Only").tag("capture")
+                    Text("Relay to VM").tag("relay")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
             }
-            .foregroundColor(.white)
             
-            VStack(alignment: .center, spacing: 8) {
-                HStack {
-                    Text("Target VM:")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(white: 0.6))
-                    Spacer()
-                    Picker("", selection: $selectedVM) {
-                        Text("Windows 11").tag("Windows 11")
-                        Text("Ubuntu 22.04").tag("Ubuntu 22.04")
-                        Text("macOS Ventura").tag("macOS Ventura")
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 120)
-                }
-                
-                HStack {
-                    Text("Connection:")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(white: 0.6))
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 6, height: 6)
-                        Text("Connected")
+            // VM Selection (only show in relay mode)
+            if captureService.isRelayMode {
+                VStack(alignment: .center, spacing: 8) {
+                    HStack {
+                        Text("Target VM:")
                             .font(.system(size: 12))
-                            .foregroundColor(.green)
+                            .foregroundColor(Color(white: 0.6))
+                        Spacer()
+                        Button(action: {
+                            isRefreshing = true
+                            captureService.refreshParallelsVMs()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                isRefreshing = false
+                            }
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isRefreshing)
+                    }
+                    
+                    if captureService.availableVMs.isEmpty {
+                        Text("No VMs found. Click refresh or ensure Parallels is running.")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(white: 0.5))
+                            .multilineTextAlignment(.center)
+                    } else {
+                        Picker("", selection: Binding(
+                            get: { captureService.targetVM?.id.uuidString ?? "" },
+                            set: { uuidString in
+                                captureService.targetVM = captureService.availableVMs.first { $0.id.uuidString == uuidString }
+                            }
+                        )) {
+                            Text("Select VM...").tag("")
+                            ForEach(captureService.availableVMs) { vm in
+                                Text("\(vm.name) (\(vm.status.displayName))").tag(vm.id.uuidString)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity)
+                    }
+                    
+                    if let vm = captureService.targetVM {
+                        HStack {
+                            Text("Status:")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(white: 0.6))
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(vm.isRunning ? Color.green : Color(white: 0.4))
+                                    .frame(width: 6, height: 6)
+                                Text(vm.status.displayName)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(vm.isRunning ? .green : Color(white: 0.6))
+                            }
+                        }
                     }
                 }
+            } else {
+                Text("Capture mode - keys will be blocked from macOS")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(white: 0.5))
+                    .multilineTextAlignment(.center)
             }
         }
         .padding(14)
@@ -556,6 +679,11 @@ struct ParallelsSettingsCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(white: 0.3), lineWidth: 1)
         )
+        .onAppear {
+            if captureService.isRelayMode && captureService.availableVMs.isEmpty {
+                captureService.refreshParallelsVMs()
+            }
+        }
     }
 }
 
@@ -573,8 +701,8 @@ struct KeyEventRow: View {
                     .font(.system(size: 12, weight: .medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(event.event == "down" ? Color.blue.opacity(0.2) : Color.purple.opacity(0.2))
-                    .foregroundColor(event.event == "down" ? .blue : .purple)
+                    .background(event.event == "down" ? Color.sapphireRoyal.opacity(0.2) : Color.sapphireDusty.opacity(0.2))
+                    .foregroundColor(event.event == "down" ? .sapphireRoyal : .sapphireDusty)
                     .cornerRadius(4)
             }
             

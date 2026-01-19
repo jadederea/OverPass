@@ -16,7 +16,7 @@ struct ConfirmationScreenView: View {
     
     var body: some View {
         ZStack {
-            Color(red: 0.09, green: 0.09, blue: 0.11)
+            Color.sapphireDark
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {

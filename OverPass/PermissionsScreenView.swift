@@ -15,8 +15,8 @@ struct PermissionsScreenView: View {
     
     var body: some View {
         ZStack {
-            // Dark background
-            Color(red: 0.09, green: 0.09, blue: 0.11)
+            // Dark background - Sapphire dark
+            Color.sapphireDark
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
@@ -47,11 +47,11 @@ struct PermissionsScreenView: View {
                     // Icon
                     ZStack {
                         Circle()
-                            .fill(Color.blue.opacity(0.2))
+                            .fill(Color.sapphireRoyal.opacity(0.2))
                             .frame(width: 96, height: 96)
                         Image(systemName: "shield.checkered")
                             .font(.system(size: 48))
-                            .foregroundColor(.blue)
+                            .foregroundColor(.sapphireRoyal)
                     }
                     
                     // Title and description
@@ -136,7 +136,7 @@ struct PermissionsScreenView: View {
                                 .padding(.vertical, 24)
                         }
                         .buttonStyle(.plain)
-                        .background(Color.blue)
+                        .background(Color.sapphireNavy)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                     }

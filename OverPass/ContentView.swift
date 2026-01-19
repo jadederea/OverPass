@@ -31,8 +31,8 @@ struct ContentView: View {
             
             // Main content area - Figma UI screens
             ZStack {
-                // Dark background matching Figma design
-                Color(red: 0.09, green: 0.09, blue: 0.11)
+                // Dark background - Sapphire dark
+                Color.sapphireDark
                     .ignoresSafeArea()
                 
                 // Show appropriate screen based on state

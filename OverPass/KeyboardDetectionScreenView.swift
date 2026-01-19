@@ -34,7 +34,7 @@ struct KeyboardDetectionScreenView: View {
     
     var body: some View {
         ZStack {
-            Color(red: 0.09, green: 0.09, blue: 0.11)
+            Color.sapphireDark
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
@@ -75,11 +75,11 @@ struct KeyboardDetectionScreenView: View {
                     // Icon
                     ZStack {
                         Circle()
-                            .fill(Color.purple.opacity(0.2))
+                            .fill(Color.sapphireRoyal.opacity(0.2))
                             .frame(width: 96, height: 96)
                         Image(systemName: "keyboard")
                             .font(.system(size: 48))
-                            .foregroundColor(.purple)
+                            .foregroundColor(.sapphireRoyal)
                     }
                     
                     // Title and description
@@ -187,7 +187,7 @@ struct KeyboardDetectionScreenView: View {
                                 .padding(.vertical, 12)
                         }
                         .buttonStyle(.plain)
-                        .background(Color.purple)
+                        .background(Color.sapphireNavy)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                         .disabled(deviceService.isScanning)
@@ -245,7 +245,7 @@ struct KeyboardDetectionScreenView: View {
             ProgressView()
                 .progressViewStyle(.circular)
                 .scaleEffect(1.5)
-                .tint(.purple)
+                .tint(.sapphireRoyal)
             Text("Detecting keyboard... (\(detector.keyPressCount) keystrokes)")
                 .font(.system(size: 16))
                 .foregroundColor(Color(white: 0.6))
@@ -255,18 +255,79 @@ struct KeyboardDetectionScreenView: View {
         }
     }
     
+    @State private var selectedDeviceId: String? = nil
+    
     private var detectionCompleteView: some View {
         VStack(spacing: 20) {
-            Text("Keyboard Detected!")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.green)
-            
-            Text("Found \(detector.detectedDevices.count) device(s)")
-                .font(.system(size: 16))
-                .foregroundColor(Color(white: 0.6))
-            
-            detectedDevicesListView
-            confirmationButtonsView
+            if detector.detectedDevices.count == 1 {
+                // Single device detected - show confirmation
+                Text("Keyboard Detected!")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.green)
+                
+                detectedDevicesListView
+                confirmationButtonsView
+            } else {
+                // Multiple devices detected - require selection
+                Text("Multiple Devices Detected")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.orange)
+                
+                Text("Please select the keyboard you were typing on:")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(white: 0.6))
+                    .multilineTextAlignment(.center)
+                
+                VStack(spacing: 12) {
+                    ForEach(detector.detectedDevices) { device in
+                        Button(action: {
+                            selectedDeviceId = device.id
+                        }) {
+                            HStack {
+                                deviceInfoCard(for: device)
+                                Spacer()
+                                if selectedDeviceId == device.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.system(size: 20))
+                                } else {
+                                    Image(systemName: "circle")
+                                        .foregroundColor(Color(white: 0.4))
+                                        .font(.system(size: 20))
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                
+                HStack(spacing: 12) {
+                    Button(action: handleDetectAgain) {
+                        Text("Detect Again")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .background(Color(white: 0.2))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(white: 0.3), lineWidth: 1)
+                    )
+                    
+                    Button(action: handleConfirm) {
+                        Text("Confirm Selection")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .background(selectedDeviceId != nil ? Color.green : Color(white: 0.3))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .disabled(selectedDeviceId == nil)
+                }
+            }
         }
     }
     
@@ -296,11 +357,11 @@ struct KeyboardDetectionScreenView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(white: 0.2))
+        .background(selectedDeviceId == device.id ? Color.sapphireRoyal.opacity(0.2) : Color(white: 0.2))
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.3), lineWidth: 1)
+                .stroke(selectedDeviceId == device.id ? Color.sapphireRoyal : Color(white: 0.3), lineWidth: selectedDeviceId == device.id ? 2 : 1)
         )
     }
     
@@ -337,6 +398,7 @@ struct KeyboardDetectionScreenView: View {
     private func handleDetectAgain() {
         logger.log("User cancelled detection, restarting", level: .info)
         hasStartedDetection = false
+        selectedDeviceId = nil
         detector.stopDetection()
         // Reset state
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -347,17 +409,36 @@ struct KeyboardDetectionScreenView: View {
     
     private func handleConfirm() {
         logger.log("User confirmed detected keyboard(s)", level: .info)
-        appState.detectedKeyboardDevices = detector.detectedDevices
         
-        if let firstDevice = detector.detectedDevices.first {
+        // If multiple devices detected, use the selected one
+        // Otherwise use the first (and only) device
+        let devicesToUse: [KeyboardDevice]
+        if detector.detectedDevices.count > 1 {
+            if let selectedId = selectedDeviceId,
+               let selectedDevice = detector.detectedDevices.first(where: { $0.id == selectedId }) {
+                devicesToUse = [selectedDevice]
+                logger.log("User selected device: \(selectedDevice.name) from \(detector.detectedDevices.count) detected devices", level: .info)
+            } else {
+                // Fallback to first device if selection is invalid
+                devicesToUse = [detector.detectedDevices.first!]
+                logger.log("No device selected, using first device: \(devicesToUse[0].name)", level: .warning)
+            }
+        } else {
+            devicesToUse = detector.detectedDevices
+        }
+        
+        appState.detectedKeyboardDevices = devicesToUse
+        
+        if let firstDevice = devicesToUse.first {
             appState.setKeyboardInfo(AppState.KeyboardInfo(
                 name: firstDevice.name,
                 vendorId: String(format: "0x%04x", firstDevice.vendorId),
                 productId: String(format: "0x%04x", firstDevice.productId),
-                interfaces: detector.detectedDevices.map { $0.transportType.rawValue }
+                interfaces: devicesToUse.map { $0.transportType.rawValue }
             ))
         }
         
-        appState.navigateTo(.confirmation)
+        // Skip confirmation screen and go directly to control panel
+        appState.navigateTo(.controlPanel)
     }
 }

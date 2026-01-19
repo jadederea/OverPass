@@ -19,6 +19,8 @@
 		A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2 /* ConfirmationScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3 /* ConfirmationScreenView.swift */; };
 		C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4 /* ControlPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5 /* ControlPanelView.swift */; };
 		b52ee3b5a61e4fb0a5c19b4d1ad4b44a /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0918484b95224ae1b1d6b52891845016 /* ContentView.swift */; };
+		A1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* AppColors.swift */; };
+		K7A8B9C0D1E2F3A4B5C6D7E8F9A0B1 /* KeyboardCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = K8B9C0D1E2F3A4B5C6D7E8F9A0B1C2 /* KeyboardCaptureService.swift */; };
 		d58143f114cb4058a96962a722376808 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ee9a372e40d1417089eccff302a08f00 /* Assets.xcassets */; };
 		ee3f44c4b5a2412c8cb3a770d7b2b9b6 /* OverPassApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6099af0dc6294b95a7cae1c51e400e30 /* OverPassApp.swift */; };
 		f7fabc88a46f4b8982d63f470f47a559 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = f4ee8a48b6904edfb8d35ce7c541e8e9 /* Preview Assets.xcassets */; };
@@ -37,6 +39,8 @@
 		F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1 /* KeyboardDetectionScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDetectionScreenView.swift; sourceTree = "<group>"; };
 		B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3 /* ConfirmationScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationScreenView.swift; sourceTree = "<group>"; };
 		D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColors.swift; sourceTree = "<group>"; };
+		K8B9C0D1E2F3A4B5C6D7E8F9A0B1C2 /* KeyboardCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardCaptureService.swift; sourceTree = "<group>"; };
 		6099af0dc6294b95a7cae1c51e400e30 /* OverPassApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverPassApp.swift; sourceTree = "<group>"; };
 		e67f8ebd1644419c920b6d65b8a40b93 /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		ee9a372e40d1417089eccff302a08f00 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -71,6 +75,8 @@
 				F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1 /* KeyboardDetectionScreenView.swift */,
 				B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3 /* ConfirmationScreenView.swift */,
 				D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5 /* ControlPanelView.swift */,
+				B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8 /* AppColors.swift */,
+				K8B9C0D1E2F3A4B5C6D7E8F9A0B1C2 /* KeyboardCaptureService.swift */,
 				ee9a372e40d1417089eccff302a08f00 /* Assets.xcassets */,
 				8f5ad4937fc04db69ecff736674cabf4 /* Preview Content */,
 				073bd71b302b47319219a5710aa9fddf /* OverPass.entitlements */,
@@ -185,6 +191,8 @@
 				E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0 /* KeyboardDetectionScreenView.swift in Sources */,
 				A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2 /* ConfirmationScreenView.swift in Sources */,
 				C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4 /* ControlPanelView.swift in Sources */,
+				A1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6 /* AppColors.swift in Sources */,
+				K7A8B9C0D1E2F3A4B5C6D7E8F9A0B1 /* KeyboardCaptureService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

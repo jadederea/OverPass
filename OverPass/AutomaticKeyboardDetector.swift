@@ -89,70 +89,69 @@ class AutomaticKeyboardDetector: ObservableObject {
     
     private func correlateDetectedDevices() {
         logger.log("Correlating \(detectedDeviceIds.count) detected IDs with \(availableDevices.count) available devices", level: .info)
+        logger.log("Detected device IDs: \(Array(detectedDeviceIds).joined(separator: ", "))", level: .info)
+        logger.log("Available device IDs: \(availableDevices.map { $0.id }.joined(separator: ", "))", level: .info)
         
         var matchedDevices: [KeyboardDevice] = []
         
         for deviceId in detectedDeviceIds {
-            logger.log("Looking for device ID: \(deviceId)", level: .debug)
+            logger.log("Looking for device ID: \(deviceId)", level: .info)
             
-            // Try exact match first
+            // STRICT MATCHING: Only use exact match or physical device match for same physical keyboard
+            // This prevents false positives from unrelated devices
+            
+            // Try exact match first (most precise)
             if let exactMatch = availableDevices.first(where: { $0.id == deviceId }) {
                 matchedDevices.append(exactMatch)
-                logger.log("Exact match found: \(exactMatch.name)", level: .info)
+                logger.log("Exact match found: \(exactMatch.name) (ID: \(exactMatch.id))", level: .info)
                 continue
             }
             
-            // Try physical device match - find all devices with same physicalDeviceId
-            // This handles multiple interfaces (USB + Bluetooth) of same keyboard
+            // Try physical device match - ONLY for devices with the same physical ID
+            // This handles multiple interfaces (USB + Bluetooth) of the SAME physical keyboard
+            // But we need to be careful - only match if the physical ID calculation matches
+            logger.log("No exact match for \(deviceId), trying physical device match...", level: .info)
+            
+            let parts = deviceId.split(separator: ":")
+            guard parts.count == 3,
+                  let vendorId = Int(parts[0], radix: 16),
+                  let productId = Int(parts[1], radix: 16),
+                  let locationId = Int(parts[2], radix: 16) else {
+                logger.log("Invalid device ID format: \(deviceId)", level: .warning)
+                continue
+            }
+            
+            let detectedPhysicalId = "\(vendorId)-\(productId)-\(locationId >> 8)"
+            
+            // Only match devices with the EXACT same physical ID
+            // This ensures we only get multiple interfaces of the SAME keyboard, not different keyboards
             let physicalMatches = availableDevices.filter { device in
                 guard let physicalId = device.physicalDeviceId else { return false }
-                // Extract physical ID from deviceId (format: vendorId:productId:locationId)
-                // We need to calculate physical ID from the detected deviceId
-                let parts = deviceId.split(separator: ":")
-                if parts.count == 3,
-                   let vendorId = Int(parts[0], radix: 16),
-                   let productId = Int(parts[1], radix: 16),
-                   let locationId = Int(parts[2], radix: 16) {
-                    let detectedPhysicalId = "\(vendorId)-\(productId)-\(locationId >> 8)"
-                    return detectedPhysicalId == physicalId
-                }
-                return false
+                return detectedPhysicalId == physicalId
             }
             
             if !physicalMatches.isEmpty {
-                matchedDevices.append(contentsOf: physicalMatches)
-                logger.log("Physical match found: \(physicalMatches.map { $0.name }.joined(separator: ", "))", level: .info)
+                // Only add if we haven't already added a device with this physical ID
+                let alreadyAdded = matchedDevices.contains(where: { $0.physicalDeviceId == detectedPhysicalId })
+                if !alreadyAdded {
+                    matchedDevices.append(contentsOf: physicalMatches)
+                    logger.log("Physical match found: \(physicalMatches.map { $0.name }.joined(separator: ", ")) (physical: \(detectedPhysicalId))", level: .info)
+                }
                 continue
             }
             
-            logger.log("No match found for device ID: \(deviceId)", level: .warning)
+            logger.log("No match found for device ID: \(deviceId) - device may not be in available devices list", level: .warning)
         }
         
-        // Remove duplicates and group by physical device
-        // This ensures we get all interfaces (USB, Bluetooth) of the same physical keyboard
+        // Remove duplicates - keep only unique devices
         var uniqueDevices: [KeyboardDevice] = []
-        var seenPhysicalIds: Set<String> = []
+        var seenIds: Set<String> = []
         
         for device in matchedDevices {
-            if let physicalId = device.physicalDeviceId {
-                if !seenPhysicalIds.contains(physicalId) {
-                    seenPhysicalIds.insert(physicalId)
-                    uniqueDevices.append(device)
-                    logger.log("Added unique device: \(device.name) (physical: \(physicalId))", level: .info)
-                } else {
-                    // Already have a device with this physical ID, but check if this is a different interface
-                    // If same physical ID but different transport type, add it (multiple interfaces)
-                    let hasSameInterface = uniqueDevices.contains(where: { $0.physicalDeviceId == physicalId && $0.transportType == device.transportType })
-                    if !hasSameInterface {
-                        // Same physical device but different transport - add it (multiple interfaces)
-                        uniqueDevices.append(device)
-                        logger.log("Added additional interface: \(device.name) (\(device.transportType.rawValue))", level: .info)
-                    }
-                    // If hasSameInterface is true, skip (duplicate)
-                }
-            } else {
+            if !seenIds.contains(device.id) {
+                seenIds.insert(device.id)
                 uniqueDevices.append(device)
-                logger.log("Added device without physical ID: \(device.name)", level: .info)
+                logger.log("Added unique device: \(device.name) (ID: \(device.id))", level: .info)
             }
         }
         
@@ -160,11 +159,14 @@ class AutomaticKeyboardDetector: ObservableObject {
         logger.log("Final result: \(uniqueDevices.count) unique devices detected", level: .info)
         
         for device in uniqueDevices {
-            logger.log("Selected: \(device.name) (\(device.manufacturer)) - ID: \(device.id), Physical: \(device.physicalDeviceId ?? "none")", level: .info)
+            logger.log("Detected: \(device.name) (\(device.manufacturer)) - ID: \(device.id), Physical: \(device.physicalDeviceId ?? "none")", level: .info)
         }
     }
     
     func handleHIDInput(value: IOHIDValue) {
+        // Ignore events if detection is not active
+        guard isListening else { return }
+        
         let element = IOHIDValueGetElement(value)
         let device = IOHIDElementGetDevice(element)
         let intValue = IOHIDValueGetIntegerValue(value)
@@ -182,19 +184,19 @@ class AutomaticKeyboardDetector: ObservableObject {
         let deviceId = String(format: "%04x:%04x:%08x", vendorId, productId, locationId)
         let physicalDeviceId = String(format: "%d-%d-%d", vendorId, productId, locationId >> 8)
         
-        logger.log("Key press from device: \(productName)", level: .debug)
-        logger.log("  Device ID: \(deviceId), Physical ID: \(physicalDeviceId)", level: .debug)
-        logger.log("  Vendor: 0x\(String(vendorId, radix: 16, uppercase: true)), Product: 0x\(String(productId, radix: 16, uppercase: true)), Location: 0x\(String(locationId, radix: 16, uppercase: true))", level: .debug)
+        logger.log("Key press from device: \(productName)", level: .info)
+        logger.log("  Device ID: \(deviceId), Physical ID: \(physicalDeviceId)", level: .info)
+        logger.log("  Vendor: 0x\(String(vendorId, radix: 16, uppercase: true)), Product: 0x\(String(productId, radix: 16, uppercase: true)), Location: 0x\(String(locationId, radix: 16, uppercase: true))", level: .info)
         
         // Track this device
-        let wasNewDevice = detectedDeviceIds.insert(deviceId).inserted
+        _ = detectedDeviceIds.insert(deviceId)
         keyPressCount += 1
         
         logger.log("Total keystrokes: \(keyPressCount), Unique devices: \(detectedDeviceIds.count)", level: .info)
         
-        // Auto-stop after 3-5 keystrokes and correlate devices
+        // Auto-stop after 3 keystrokes total and correlate devices
         // This gives enough data to identify the keyboard without being too slow
-        if keyPressCount >= 3 && wasNewDevice {
+        if keyPressCount >= 3 {
             logger.log("Enough keystrokes detected (\(keyPressCount)), stopping detection and correlating devices", level: .info)
             // Stop detection and correlate
             stopDetection()
