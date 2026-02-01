@@ -46,7 +46,7 @@ Run the build script to automatically:
 3. Deploy to Desktop with versioned name (e.g., `OverPass-v1.0.1.app`)
 
 ```bash
-cd /Users/mswansegar/OverPass
+cd ~/OverPass
 ./build_and_deploy.sh
 ```
 
@@ -54,7 +54,8 @@ cd /Users/mswansegar/OverPass
 
 1. Open `OverPass.xcodeproj` in Xcode
 2. Select the "OverPass" scheme
-3. Build (⌘B) or Run (⌘R)
+3. If prompted, set your **Development Team** in Signing & Capabilities (project has no team ID for public clone)
+4. Build (⌘B) or Run (⌘R)
 
 ## Project Structure
 

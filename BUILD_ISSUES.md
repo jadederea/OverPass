@@ -10,7 +10,7 @@
 
 ### 2. Permission Errors
 - **Problem**: Cannot write to DerivedData folder
-- **Error**: `Couldn't create workspace arena folder '/Users/mswansegar/Library/Developer/Xcode/DerivedData/OverPass-...': Unable to write to info file`
+- **Error**: `Couldn't create workspace arena folder '/Users/<username>/Library/Developer/Xcode/DerivedData/OverPass-...': Unable to write to info file`
 - **Possible Causes**:
   - Sandbox restrictions when running script from Cursor
   - File system permissions on DerivedData folder

@@ -14,9 +14,10 @@ struct ControlPanelView: View {
     @StateObject private var logger = Logger.shared
     @StateObject private var captureService = KeyboardCaptureService.shared
     
-    @State private var minutes = 5
+    @State private var minutes = 120  // Default: 2 hours
     @State private var seconds = 0
     @State private var timeRemaining: Int? = nil
+    @State private var timer: Timer? = nil  // Store timer to prevent multiple instances
     
     // Computed properties for capture service
     private var isCapturing: Bool {
@@ -180,18 +181,6 @@ struct ControlPanelView: View {
                                     
                                     // Preset buttons - more compact
                                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                                        PresetButton(title: "10s", seconds: 10, isCapturing: isCapturing) {
-                                            setPresetTime(10)
-                                        }
-                                        PresetButton(title: "30s", seconds: 30, isCapturing: isCapturing) {
-                                            setPresetTime(30)
-                                        }
-                                        PresetButton(title: "1m", seconds: 60, isCapturing: isCapturing) {
-                                            setPresetTime(60)
-                                        }
-                                        PresetButton(title: "5m", seconds: 300, isCapturing: isCapturing) {
-                                            setPresetTime(300)
-                                        }
                                         PresetButton(title: "15m", seconds: 900, isCapturing: isCapturing) {
                                             setPresetTime(900)
                                         }
@@ -200,6 +189,15 @@ struct ControlPanelView: View {
                                         }
                                         PresetButton(title: "1h", seconds: 3600, isCapturing: isCapturing) {
                                             setPresetTime(3600)
+                                        }
+                                        PresetButton(title: "2h", seconds: 7200, isCapturing: isCapturing) {
+                                            setPresetTime(7200)
+                                        }
+                                        PresetButton(title: "4h", seconds: 14400, isCapturing: isCapturing) {
+                                            setPresetTime(14400)
+                                        }
+                                        PresetButton(title: "8h", seconds: 28800, isCapturing: isCapturing) {
+                                            setPresetTime(28800)
                                         }
                                     }
                                     
@@ -419,7 +417,13 @@ struct ControlPanelView: View {
         .onChange(of: captureService.isCapturing) { newValue in
             if newValue {
                 startTimer()
+            } else {
+                stopTimer()
             }
+        }
+        .onDisappear {
+            // Clean up timer when view disappears
+            stopTimer()
         }
     }
     
@@ -456,29 +460,39 @@ struct ControlPanelView: View {
             logger.log("\(modeText) started - Timer: \(minutes)m \(seconds)s", level: .info)
         } else {
             captureService.stopCapture()
+            stopTimer()
             timeRemaining = nil
             logger.log("Capture stopped - Total events: \(capturedKeys)", level: .info)
         }
     }
     
     private func startTimer() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak captureService] timer in
-            guard let captureService = captureService,
-                  captureService.isCapturing,
+        // Stop any existing timer first
+        stopTimer()
+        
+        // Create and store the timer
+        // Timer runs on main run loop, so state updates are safe
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            guard captureService.isCapturing,
                   let time = timeRemaining else {
-                timer.invalidate()
+                stopTimer()
                 return
             }
             
             if time <= 1 {
                 captureService.stopCapture()
                 timeRemaining = nil
-                timer.invalidate()
+                stopTimer()
                 logger.log("Safety timer expired - Capture stopped", level: .warning)
             } else {
                 timeRemaining = time - 1
             }
         }
+    }
+    
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
     }
     
     private func formatTime(_ totalSeconds: Int) -> String {

@@ -404,14 +404,13 @@ prlctl send-key-event <VM_UUID> --scancode <scan_code> --event <press|release>
 
 ### 3. Event Blocking Correlation
 
-**Complexity:**
-- Uses time-based correlation between HID events and CGEvents
-- Time windows are tuned (10s for held keys, 200ms for key up)
-- May occasionally block built-in keyboard if timing is unlucky
-
-**Fragility:**
-- Correlation logic is complex and timing-dependent
-- May need adjustment for different keyboard types or system load
+**Optimization (2026-01) - Performance & Reliability:**
+- Replaced O(n) array iteration with O(1) dictionary lookup (`lastHIDKeyDownTime`, `lastHIDKeyUpTime`)
+- Event tap callback runs for EVERY system key event - was bottleneck causing lag and missed keys under load
+- Widened initial correlation window to 80ms (from 30ms) for better load tolerance
+- Key up now trusts `pressedKeys` only (fixes race when CGEvent arrives before HID callback - keys reaching host)
+- Added periodic cleanup (every 5s) to prevent stale state accumulation and degradation over time
+- Relay queue: now uses OperationQueue with 2 concurrent operations (was serial) to reduce "lag then burst"
 
 ### 4. HID State Report Handling
 

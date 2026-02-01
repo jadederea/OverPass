@@ -83,12 +83,21 @@ class KeyboardCaptureService: ObservableObject {
     private let logger = Logger.shared
     private var maxHistorySize = 1000
     
-    // Relay queue for serial execution of prlctl commands
-    private let relayQueue = DispatchQueue(label: "com.overpass.relay", qos: .userInitiated)
+    // Relay queue - allow 2 concurrent prlctl to reduce lag during rapid key presses
+    // Serial was causing "lag then burst" when many keys queued (each prlctl ~150ms)
+    private let relayOperationQueue: OperationQueue = {
+        let q = OperationQueue()
+        q.name = "com.overpass.relay"
+        q.maxConcurrentOperationCount = 2  // Parallelism reduces backlog, 2 is safe for Parallels
+        q.qualityOfService = .userInteractive
+        return q
+    }()
     
-    // Event correlation for blocking
-    private var recentHIDEvents: [TimestampedKeyEvent] = []
-    private let eventCorrelationTimeWindow: TimeInterval = 0.1 // 100ms window for correlation
+    // O(1) event correlation for blocking - replaces O(n) array iteration
+    // Event tap callback runs for EVERY system key event; must be very fast
+    private var lastHIDKeyDownTime: [Int: Date] = [:]  // keyCode -> timestamp
+    private var lastHIDKeyUpTime: [Int: Date] = [:]    // keyCode -> timestamp
+    private let correlationLock = NSLock()  // Protects the maps from HID vs CGEvent threads
     
     // Track pressed keys to allow key repeats for continuous movement
     private var pressedKeys: Set<Int> = [] // Track which keys are currently pressed
@@ -97,19 +106,16 @@ class KeyboardCaptureService: ObservableObject {
     // HID keyboards send state reports - we need to compare current vs previous state
     private var previousHIDState: [Int: Bool] = [:] // keyCode -> wasPressed
     
+    // Periodic cleanup to prevent degradation over time (stale state accumulation)
+    private var cleanupTimer: Timer?
+    private let maxCorrelationMapSize = 50  // Prune if we exceed this many keys
+    
     struct CapturedKeyEvent: Identifiable {
         let id: String
         let key: String
         let event: String // "down" or "up"
         let timestamp: Date
         let keyCode: Int64
-    }
-    
-    private struct TimestampedKeyEvent {
-        let keyCode: Int
-        let isKeyDown: Bool
-        let timestamp: Date
-        let deviceName: String
     }
     
     private init() {}
@@ -142,7 +148,11 @@ class KeyboardCaptureService: ObservableObject {
             isCapturing = true
             capturedEventCount = 0
             capturedEvents.removeAll()
-            recentHIDEvents.removeAll()
+            correlationLock.lock()
+            lastHIDKeyDownTime.removeAll()
+            lastHIDKeyUpTime.removeAll()
+            correlationLock.unlock()
+            startPeriodicCleanup()
         } else if hidSuccess {
             logger.log("Partial success - Device monitoring active, but event blocking failed", level: .warning)
             isCapturing = true
@@ -182,9 +192,63 @@ class KeyboardCaptureService: ObservableObject {
         
         isCapturing = false
         targetDevice = nil
-        recentHIDEvents.removeAll()
+        correlationLock.lock()
+        lastHIDKeyDownTime.removeAll()
+        lastHIDKeyUpTime.removeAll()
+        correlationLock.unlock()
         pressedKeys.removeAll() // Clear pressed keys when stopping
         previousHIDState.removeAll() // Clear previous HID state
+        stopPeriodicCleanup()
+    }
+    
+    private func startPeriodicCleanup() {
+        stopPeriodicCleanup()
+        cleanupTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            self?.performCorrelationCleanup()
+        }
+        RunLoop.current.add(cleanupTimer!, forMode: .common)
+    }
+    
+    private func stopPeriodicCleanup() {
+        cleanupTimer?.invalidate()
+        cleanupTimer = nil
+    }
+    
+    /// Prune stale correlation data to prevent degradation over time
+    private func performCorrelationCleanup() {
+        guard isCapturing else { return }
+        
+        let cutoff = Date().addingTimeInterval(-30.0)  // Remove entries older than 30 seconds
+        
+        correlationLock.lock()
+        var pruned = 0
+        for (keyCode, time) in lastHIDKeyDownTime {
+            if time < cutoff {
+                lastHIDKeyDownTime.removeValue(forKey: keyCode)
+                pruned += 1
+            }
+        }
+        for (keyCode, time) in lastHIDKeyUpTime {
+            if time < cutoff {
+                lastHIDKeyUpTime.removeValue(forKey: keyCode)
+                pruned += 1
+            }
+        }
+        // Also prune if maps grew too large (rapid key churn)
+        if lastHIDKeyDownTime.count > maxCorrelationMapSize {
+            let sorted = lastHIDKeyDownTime.sorted { $0.value < $1.value }
+            let toRemove = sorted.prefix(lastHIDKeyDownTime.count - maxCorrelationMapSize)
+            for (k, _) in toRemove {
+                lastHIDKeyDownTime.removeValue(forKey: k)
+                lastHIDKeyUpTime.removeValue(forKey: k)
+                pruned += 1
+            }
+        }
+        correlationLock.unlock()
+        
+        if pruned > 0 {
+            logger.log("Correlation cleanup: pruned \(pruned) stale entries", level: .debug)
+        }
     }
     
     func clearHistory() {
@@ -341,19 +405,11 @@ class KeyboardCaptureService: ObservableObject {
                 logger.log("Key \(keyName) (keyCode=\(keyCode)) added to pressedKeys", level: .debug)
             }
             
-            // Record HID key down event
+            // Record HID key down for O(1) correlation (critical for fast event tap callback)
             let currentTime = Date()
-            let hidEvent = TimestampedKeyEvent(
-                keyCode: keyCode,
-                isKeyDown: true,
-                timestamp: currentTime,
-                deviceName: deviceName
-            )
-            recentHIDEvents.append(hidEvent)
-            
-            // Clean up old events (keep events for up to 10 seconds for long key holds)
-            let cutoffTime = currentTime.addingTimeInterval(-10.0)
-            recentHIDEvents.removeAll { $0.timestamp < cutoffTime }
+            correlationLock.lock()
+            lastHIDKeyDownTime[keyCode] = currentTime
+            correlationLock.unlock()
             
             // Capture key down event for UI
             let capturedEvent = CapturedKeyEvent(
@@ -389,19 +445,11 @@ class KeyboardCaptureService: ObservableObject {
                 logger.log("Key \(keyName) (keyCode=\(keyCode)) removed from pressedKeys", level: .debug)
             }
             
-            // Record HID key up event
+            // Record HID key up for O(1) correlation
             let currentTime = Date()
-            let hidEvent = TimestampedKeyEvent(
-                keyCode: keyCode,
-                isKeyDown: false,
-                timestamp: currentTime,
-                deviceName: deviceName
-            )
-            recentHIDEvents.append(hidEvent)
-            
-            // Clean up old events (keep events for up to 10 seconds for long key holds)
-            let cutoffTime = currentTime.addingTimeInterval(-10.0)
-            recentHIDEvents.removeAll { $0.timestamp < cutoffTime }
+            correlationLock.lock()
+            lastHIDKeyUpTime[keyCode] = currentTime
+            correlationLock.unlock()
             
             // Capture key up event for UI
             let capturedEvent = CapturedKeyEvent(
@@ -478,143 +526,46 @@ class KeyboardCaptureService: ObservableObject {
     }
     
     /// Check if a CGEvent should be blocked (from target device)
-    /// For blocking mode: blocks ALL events (including repeats) from target device
-    /// Strategy: Only block if we have STRONG evidence the event is from target device (recent HID correlation)
-    /// This prevents blocking built-in keyboard events
+    /// OPTIMIZED: O(1) lookup - event tap runs for EVERY system key event, must be very fast
+    /// Prevents blocking built-in keyboard; only blocks events with strong HID correlation
     private func hasDirectHIDCorrelation(keyCode: Int, isKeyDown: Bool, eventTimestamp: Date, allowRepeats: Bool = false) -> Bool {
-        guard let targetDevice = targetDevice else {
+        guard targetDevice != nil else {
             return false
         }
         
-        let targetDeviceName = targetDevice.name
-        
-        // For key down events
         if isKeyDown {
-            // Strategy: Block if key is in pressedKeys (we captured it from HID) OR if we have very recent HID correlation
-            // This ensures we block all repeats for held keys while being conservative about built-in keyboard
-            
-            // First check: If key is in pressedKeys, we definitely captured it from HID
-            // Block ALL subsequent key down events for this key (including macOS key repeats)
-            // This is critical to prevent stuck key sounds - we must block ALL repeats
-            // We block ALL key down events for keys in pressedKeys until we see a key up from HID
+            // O(1) lookup for key down correlation
+            correlationLock.lock()
+            let lastDown = lastHIDKeyDownTime[keyCode]
+            correlationLock.unlock()
+            // First check: Key in pressedKeys = we captured it from HID, block all repeats
             if pressedKeys.contains(keyCode) {
-                // Check if we have ANY HID event for this key from target device
-                // We use a very long window (10 seconds) to catch all repeats, even for very long key holds
-                // The key being in pressedKeys is already evidence it's from our device
-                let repeatTimeWindow: TimeInterval = 10.0 // 10 seconds - very generous window
-                
-                var hasHIDEventFromTarget = false
-                for hidEvent in recentHIDEvents.reversed() {
-                    guard hidEvent.deviceName == targetDeviceName else { continue }
-                    guard hidEvent.keyCode == keyCode else { continue }
-                    
-                    let timeDiff = abs(eventTimestamp.timeIntervalSince(hidEvent.timestamp))
-                    if timeDiff <= repeatTimeWindow {
-                        hasHIDEventFromTarget = true
-                        break
-                    }
-                    if timeDiff > repeatTimeWindow {
-                        break
-                    }
-                }
-                
-                if hasHIDEventFromTarget {
-                    // Block ALL key down events for this key - it's from our device and still being held
-                    // This prevents stuck key sounds by blocking all macOS key repeats
-                    logger.log("Blocking key repeat for keyCode=\(keyCode) - key in pressedKeys with HID event from target device", level: .debug)
-                    return true
-                } else {
-                    // Key is in pressedKeys but no recent HID event - might be stale or from built-in keyboard
-                    // This shouldn't happen in normal operation, but be conservative and allow it
-                    // Remove from pressedKeys to prevent stuck state
-                    logger.log("KeyCode=\(keyCode) in pressedKeys but no recent HID event - allowing through and removing from pressedKeys (likely built-in keyboard or stale state)", level: .warning)
-                    pressedKeys.remove(keyCode)
-                    return false
-                }
-            }
-            
-            // Second check: Look for initial HID correlation (for first press before key is added to pressedKeys)
-            // Use a very tight window to avoid false positives
-            let strictTimeWindow: TimeInterval = 0.03 // 30ms - very tight window for initial correlation
-            
-            for hidEvent in recentHIDEvents.reversed() {
-                guard hidEvent.deviceName == targetDeviceName else { continue }
-                guard hidEvent.isKeyDown && hidEvent.keyCode == keyCode else { continue }
-                
-                let timeDiff = abs(eventTimestamp.timeIntervalSince(hidEvent.timestamp))
-                
-                if timeDiff <= strictTimeWindow {
-                    logger.log("Direct correlation found: HID keyDown from '\(targetDeviceName)' within \(String(format: "%.3f", timeDiff))s - BLOCKING first press", level: .debug)
-                    pressedKeys.insert(keyCode)
+                // Verify we have recent HID key down (within 10s for long holds)
+                let repeatTimeWindow: TimeInterval = 10.0
+                if let downTime = lastDown, eventTimestamp.timeIntervalSince(downTime) <= repeatTimeWindow {
                     return true
                 }
-                
-                if timeDiff > strictTimeWindow {
-                    break
-                }
+                // Stale - remove and allow through (prevents stuck state)
+                pressedKeys.remove(keyCode)
+                return false
             }
             
-            // No correlation found - this is likely from built-in keyboard, allow it through
+            // Second check: Initial press - HID key down within 80ms (wider than 30ms for load tolerance)
+            let initialTimeWindow: TimeInterval = 0.08
+            if let downTime = lastDown, eventTimestamp.timeIntervalSince(downTime) <= initialTimeWindow {
+                pressedKeys.insert(keyCode)
+                return true
+            }
+            
             return false
         } else {
-            // For key up events: block if key is in pressedKeys (we captured the key down from HID)
-            // HID doesn't send explicit key up events, so we rely on CGEvent key up
-            // If the key is in pressedKeys, it means we captured it from HID, so block the CGEvent
+            // Key up: block if key is in pressedKeys (we captured key down from HID)
+            // Don't require lastUp - CGEvent can arrive before HID callback, causing missed blocks
+            // Note: Don't add to capturedEvents here - HID path already captures key up
             if pressedKeys.contains(keyCode) {
-                // Check if we have a recent HID event for this key (within 200ms)
-                // This ensures it's still from our device
-                let keyUpTimeWindow: TimeInterval = 0.2 // 200ms window for key up
-                var hasRecentHIDEvent = false
-                
-                for hidEvent in recentHIDEvents.reversed() {
-                    guard hidEvent.deviceName == targetDeviceName else { continue }
-                    guard hidEvent.keyCode == keyCode else { continue }
-                    
-                    let timeDiff = abs(eventTimestamp.timeIntervalSince(hidEvent.timestamp))
-                    if timeDiff <= keyUpTimeWindow {
-                        hasRecentHIDEvent = true
-                        break
-                    }
-                    if timeDiff > keyUpTimeWindow {
-                        break
-                    }
-                }
-                
-                if hasRecentHIDEvent {
-                    logger.log("Blocking keyUp for keyCode=\(keyCode) - key in pressedKeys with recent HID event", level: .debug)
-                    
-                    // Capture key up event for UI
-                    let keyName = getKeyName(from: Int64(keyCode))
-                    let capturedEvent = CapturedKeyEvent(
-                        id: UUID().uuidString,
-                        key: keyName,
-                        event: "up",
-                        timestamp: eventTimestamp,
-                        keyCode: Int64(keyCode)
-                    )
-                    
-                    DispatchQueue.main.async {
-                        self.capturedEventCount += 1
-                        self.capturedEvents.append(capturedEvent)
-                        if self.capturedEvents.count > self.maxHistorySize {
-                            self.capturedEvents.removeFirst()
-                        }
-                    }
-                    
-                    logger.log("Captured key up: \(keyName) from device: \(targetDeviceName)", level: .debug)
-                    
-                    pressedKeys.remove(keyCode)
-                    return true
-                } else {
-                    // Key is in pressedKeys but no recent HID event - might be from built-in keyboard
-                    // Be conservative and allow it, but remove from pressedKeys to prevent stuck keys
-                    logger.log("KeyCode=\(keyCode) in pressedKeys but no recent HID event - allowing through and removing from pressedKeys", level: .debug)
-                    pressedKeys.remove(keyCode)
-                    return false
-                }
+                pressedKeys.remove(keyCode)
+                return true
             }
-            
-            // No correlation found - allow it through
             return false
         }
     }
@@ -699,7 +650,7 @@ class KeyboardCaptureService: ObservableObject {
             return
         }
         
-        relayQueue.async { [weak self] in
+        relayOperationQueue.addOperation { [weak self] in
             guard let self = self else { return }
             
             let scanCode = self.convertToScanCode(keyCode)
